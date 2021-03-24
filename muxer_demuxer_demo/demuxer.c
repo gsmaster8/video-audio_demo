@@ -8,44 +8,46 @@ int DEMUXER_AAC = 0;
 
 typedef struct {
 	int write_adts;  
-	int objecttype;  
-	int sample_rate_index;  
-	int channel_conf;  
+	int objecttype;  // 编码类型 占AudioSpecificConfig的 5bit
+	int sample_rate_index;  //采样率 占AudioSpecificConfig的 4bit
+	int channel_conf;  // 通道数 占AudioSpecificConfig的 4bit
 }ADTSContext;
  
 int aac_decode_extradata(ADTSContext *adts, unsigned char *pbuf, int bufsize) {  
-	int aot, aotext, samfreindex;  
-	int i, channelconfig;  
-	unsigned char *p = pbuf;  
-	if (!adts || !pbuf || bufsize<2) {  
+	if (!adts || !pbuf || bufsize < 2) {  
 		return -1;  
-	}  
-	aot = (p[0]>>3)&0x1f;  
-	if (aot == 31) {  
-		aotext = (p[0]<<3 | (p[1]>>5)) & 0x3f;  
-		aot = 32 + aotext;  
-		samfreindex = (p[1]>>1) & 0x0f;   
-		if (samfreindex == 0x0f) {  
-			channelconfig = ((p[4]<<3) | (p[5]>>5)) & 0x0f;  
+	}
+    if (adts->write_adts) // 已经解码过
+        return 0;
+    int aot, aotext, samfreindex;  
+	int channelconfig;  
+	unsigned char *p = pbuf;  
+	
+	aot = (p[0] >> 3) & 0x1f;  // 取 object_Type
+	if (aot == 31) {  // 如果为特殊值 31
+		aotext = ((p[0] << 3) | (p[1] >> 5)) & 0x3f; // 接着取6 bits 
+		aot = 32 + aotext;  // 32+ 6bits
+		samfreindex = (p[1] >> 1) & 0x0f; // 4 bits的采样率  
+		if (samfreindex == 0x0f) {  // 如果为特殊值  15
+			channelconfig = ((p[4] << 3) | (p[5] >> 5)) & 0x0f;  // 跳过Frequency的 24bits, 取4 bits
 		}  
 		else {  
-			channelconfig = ((p[1]<<3)|(p[2]>>5)) & 0x0f;  
+			channelconfig = ((p[1] << 3) | (p[2] >> 5)) & 0x0f;  // 取 4bits
 		}  
 	}  
-	else  
-	{  
-		samfreindex = ((p[0]<<1)|p[1]>>7) & 0x0f;  
+	else {  
+		samfreindex = ((p[0] << 1) | (p[1] >> 7)) & 0x0f;  // 同上
 		if (samfreindex == 0x0f) {  
-			channelconfig = (p[4]>>3) & 0x0f;  
+			channelconfig = (p[4] >> 3) & 0x0f;  
 		}  
 		else {  
-			channelconfig = (p[1]>>3) & 0x0f;  
+			channelconfig = (p[1] >> 3) & 0x0f;  
 		}  
 	}  
 #ifdef AOT_PROFILE_CTRL  
 	if (aot < 2) aot = 2;  
 #endif  
-	adts->objecttype = aot-1;  
+	adts->objecttype = aot - 1;  // 减一，与ADTs头的profile字段对应
 	adts->sample_rate_index = samfreindex;  
 	adts->channel_conf = channelconfig;  
 	adts->write_adts = 1;  
@@ -53,30 +55,27 @@ int aac_decode_extradata(ADTSContext *adts, unsigned char *pbuf, int bufsize) {
 }  
  
 int aac_set_adts_head(ADTSContext *acfg, unsigned char *buf, int size) {         
-	unsigned char byte;    
-	if (size < ADTS_HEADER_SIZE) {  
-		return -1;  
-	}       
+	unsigned char byte;        
 	buf[0] = 0xff;  
-	buf[1] = 0xf1;  
+	buf[1] = 0xf1;  // MPEG-4 无CRC检验
 	byte = 0;  
-	byte |= (acfg->objecttype & 0x03) << 6;  
-	byte |= (acfg->sample_rate_index & 0x0f) << 2;  
+	byte |= (acfg->objecttype & 0x03) << 6;  // Profile: 2bits
+	byte |= (acfg->sample_rate_index & 0x0f) << 2;  // Frequency_index : 4bits
 	byte |= (acfg->channel_conf & 0x07) >> 2;  
 	buf[2] = byte;  
 	byte = 0;  
 	byte |= (acfg->channel_conf & 0x07) << 6;  
-	byte |= (ADTS_HEADER_SIZE + size) >> 11;  
+	byte |= (ADTS_HEADER_SIZE + size) >> 11;  // 取13位的前2位
 	buf[3] = byte;  
 	byte = 0;  
-	byte |= (ADTS_HEADER_SIZE + size) >> 3;  
+	byte |= (ADTS_HEADER_SIZE + size) >> 3; // 取13位的第4-11位 
 	buf[4] = byte;  
 	byte = 0;  
-	byte |= ((ADTS_HEADER_SIZE + size) & 0x7) << 5;  
-	byte |= (0x7ff >> 6) & 0x1f;  
+	byte |= ((ADTS_HEADER_SIZE + size) & 0x7) << 5;  // 取13位的后3位
+	byte |= (0x7ff >> 6) & 0x1f;  // 取11位的前5位
 	buf[5] = byte;  
 	byte = 0;  
-	byte |= (0x7ff & 0x3f) << 2;  
+	byte |= (0x7ff & 0x3f) << 2;  //取11位的后6位
 	buf[6] = byte;     
 	return 0;  
 }
@@ -87,8 +86,8 @@ int main() {
     int ret, i;
     int videoindex = -1, audioindex = -1;
     const char *in_filename = "fish.flv";
-    const char *out_filename_v = "ffmpeg_demo.h264";
-    char *out_filename_a = "ffmpeg_demo.mp3"; // 默认mp3编码
+    const char *out_filename_v = "demuxer.h264";
+    char *out_filename_a = "demuxer.mp3"; // 默认mp3编码
 
     //av_register_all(); 已废弃
 
@@ -110,10 +109,9 @@ int main() {
             audioindex = i;
             if (ifmt_ctx->streams[i]->codecpar->codec_id == AV_CODEC_ID_AAC) {// 判断是否是aac编码
                 DEMUXER_AAC = 1;
-                out_filename_a = "ffmpeg_demo.aac";
+                out_filename_a = "demuxer.aac";
             }
-        }
-            
+        }  
     }
 
     printf("\nInput Video===========================\n");
@@ -134,7 +132,7 @@ int main() {
     AVBitStreamFilterContext* h264bsfc =  av_bitstream_filter_init("h264_mp4toannexb");
 #endif
 
-    ADTSContext stADTSContext;
+    ADTSContext stADTSContext = {0};
 	unsigned char pAdtsHead[7];
 
     while (av_read_frame(ifmt_ctx, &pkt) >= 0) {
@@ -165,16 +163,19 @@ int main() {
 #else
             av_bitstream_filter_filter(h264bsfc, ifmt_ctx->streams[videoindex]->codec, NULL, &pkt.data, &pkt.size, pkt.data, pkt.size, 0);
 #endif
-            printf("Write Video Packet. size:%d\tpts:%lld\n",pkt.size,pkt.pts);
+            //printf("Write Video Packet. size:%d\tpts:%lld\n",pkt.size,pkt.pts);
             fwrite(pkt.data, 1, pkt.size, fp_video);
         }
         else if (pkt.stream_index == audioindex) {
             if (DEMUXER_AAC) {
-                aac_decode_extradata(&stADTSContext, ifmt_ctx->streams[audioindex]->codec->extradata, ifmt_ctx->streams[audioindex]->codec->extradata_size);
-			    aac_set_adts_head(&stADTSContext, pAdtsHead, pkt.size);
-			    fwrite(pAdtsHead, 1, 7, fp_audio);
+                if ((ret = aac_decode_extradata(&stADTSContext, ifmt_ctx->streams[audioindex]->codec->extradata, ifmt_ctx->streams[audioindex]->codec->extradata_size)) == -1) {
+                    printf("Decode extradata failed!\n");
+                    goto ERROR;
+                } // 解析AudioSpecificConfig结构
+			    aac_set_adts_head(&stADTSContext, pAdtsHead, pkt.size); // 生成ADTs头
+			    fwrite(pAdtsHead, 1, 7, fp_audio); // 写ADTs头
             }
-            printf("Write Audio Packet. size:%d\tpts:%lld\n",pkt.size,pkt.pts);
+            //printf("Write Audio Packet. size:%d\tpts:%lld\n",pkt.size,pkt.pts);
             fwrite(pkt.data, 1, pkt.size, fp_audio);
         }
         av_packet_unref(&pkt);
