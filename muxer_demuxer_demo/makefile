@@ -27,14 +27,16 @@ DEMUXER_OBJS = demuxer.o
 muxer: $(MUXER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross GCC Linker'
-	$(GCC) -L$(LIB_PATH) -o muxer $(MUXER_OBJS) $(LIB)
+	#$(GCC) -L$(LIB_PATH) -o muxer $(MUXER_OBJS) $(LIB)
+	$(GCC) -std=c99 -L$(LIB_PATH) -O0 -g3 -Wall -fmessage-length=0 -o "$@" "$<" $(LIB)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
 demuxer: $(DEMUXER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross GCC Linker'
-	$(GCC) -L$(LIB_PATH) -o demuxer $(DEMUXER_OBJS) $(LIB)
+	#$(GCC) -L$(LIB_PATH) -o demuxer $(DEMUXER_OBJS) $(LIB)
+	$(GCC) -std=c99 -L$(LIB_PATH) -O0 -g3 -Wall -fmessage-length=0 -o "$@" "$<" $(LIB)
 	@echo 'Finished building target: $@'
 	@echo ' '
 	

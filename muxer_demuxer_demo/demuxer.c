@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <libavformat/avformat.h>
 
-#define  FFMPEG_NEW
+#define  NEW_FFMPEG_API 1
 #define  ADTS_HEADER_SIZE (7)
 
-int DEMUXER_AAC = 0;
+int DEMUXER_AAC = 0; // 默认解复用为mp3
 
 typedef struct {
 	int write_adts;  
@@ -12,7 +12,10 @@ typedef struct {
 	int sample_rate_index;  //采样率 占AudioSpecificConfig的 4bit
 	int channel_conf;  // 通道数 占AudioSpecificConfig的 4bit
 }ADTSContext;
- 
+
+/*
+* 从AudioSpecificConfig结构（第一个AudioTag）提取ADTSContext信息
+*/
 int aac_decode_extradata(ADTSContext *adts, unsigned char *pbuf, int bufsize) {  
 	if (!adts || !pbuf || bufsize < 2) {  
 		return -1;  
@@ -52,8 +55,11 @@ int aac_decode_extradata(ADTSContext *adts, unsigned char *pbuf, int bufsize) {
 	adts->channel_conf = channelconfig;  
 	adts->write_adts = 1;  
 	return 0;  
-}  
- 
+}
+
+/*
+* 生成ADTs（7Bytes）插入到每一个音频帧前
+*/ 
 int aac_set_adts_head(ADTSContext *acfg, unsigned char *buf, int size) {         
 	unsigned char byte;        
 	buf[0] = 0xff;  
@@ -93,12 +99,12 @@ int main() {
 
     if ((ret = avformat_open_input(&ifmt_ctx, in_filename, 0, 0)) < 0) {
         printf("Could not open input file.");
-        goto ERROR;
+        goto END;
     }
 
     if ((ret = avformat_find_stream_info(ifmt_ctx, 0)) < 0) {
         printf("Failed to retrieve input stream information");
-        goto ERROR;
+        goto END;
     }
 
     videoindex = -1;
@@ -121,12 +127,12 @@ int main() {
     FILE *fp_audio=fopen(out_filename_a,"wb+");  
 	FILE *fp_video=fopen(out_filename_v,"wb+");
 
-#ifdef FFMPEG_NEW
+#if NEW_FFMPEG_API
     AVBSFContext *video_bsf_ctx = NULL; 
     const AVBitStreamFilter *video_filter = av_bsf_get_by_name("h264_mp4toannexb");
     if (video_filter == NULL) {
         printf("Get video bsf failed!\n");
-        goto ERROR;
+        goto END;
     }
 #else 
     AVBitStreamFilterContext* h264bsfc =  av_bitstream_filter_init("h264_mp4toannexb");
@@ -137,20 +143,20 @@ int main() {
 
     while (av_read_frame(ifmt_ctx, &pkt) >= 0) {
         if (pkt.stream_index == videoindex) {
-#ifdef FFMPEG_NEW
+#if NEW_FFMPEG_API
             if ((ret = av_bsf_alloc(video_filter, &video_bsf_ctx)) != 0) {
                 printf("Alloc video bsf failed!\n");
-                goto ERROR;
+                goto END;
             }
             ret = avcodec_parameters_from_context(video_bsf_ctx->par_in, ifmt_ctx->streams[videoindex]->codec);
             if (ret < 0) {
                 printf("Set video Codec failed!\n");
-                goto ERROR;
+                goto END;
             }
             ret = av_bsf_init(video_bsf_ctx);
             if (ret < 0) {
                 printf("Init video bsf failed!\n");
-                goto ERROR;
+                goto END;
             }
             av_bsf_send_packet(video_bsf_ctx, &pkt);
             ret = av_bsf_receive_packet(video_bsf_ctx, &pkt);
@@ -158,7 +164,7 @@ int main() {
                 break;
             else if (ret < 0) {
                 printf("Receive video Pkt failed!\n");
-                goto ERROR;
+                goto END;
             }
 #else
             av_bitstream_filter_filter(h264bsfc, ifmt_ctx->streams[videoindex]->codec, NULL, &pkt.data, &pkt.size, pkt.data, pkt.size, 0);
@@ -170,7 +176,7 @@ int main() {
             if (DEMUXER_AAC) {
                 if ((ret = aac_decode_extradata(&stADTSContext, ifmt_ctx->streams[audioindex]->codec->extradata, ifmt_ctx->streams[audioindex]->codec->extradata_size)) == -1) {
                     printf("Decode extradata failed!\n");
-                    goto ERROR;
+                    goto END;
                 } // 解析AudioSpecificConfig结构
 			    aac_set_adts_head(&stADTSContext, pAdtsHead, pkt.size); // 生成ADTs头
 			    fwrite(pAdtsHead, 1, 7, fp_audio); // 写ADTs头
@@ -180,31 +186,20 @@ int main() {
         }
         av_packet_unref(&pkt);
     }
-#ifdef FFMPEG_NEW
+
+END:
+    fclose(fp_video);
+	fclose(fp_audio);
+    avformat_close_input(&ifmt_ctx);
+
+#if NEW_FFMPEG_API
     av_bsf_free(&video_bsf_ctx);
 #else
     av_bitstream_filter_close(h264bsfc); 
 #endif
-
-    fclose(fp_video);
-	fclose(fp_audio);
- 
-	avformat_close_input(&ifmt_ctx);
+    if (ret < 0 && ret != AVERROR_EOF) {
+		printf( "Error occurred.\n");
+		return -1;
+	}
     return 0;
-
-ERROR:
-    if (ifmt_ctx)
-        avformat_close_input(&ifmt_ctx);
-    if (fp_audio)
-        fclose(fp_audio);
-    if (fp_video)
-        fclose(fp_video);
-#ifdef FFMPEG_NEW
-    if (video_bsf_ctx)
-        av_bsf_free(&video_bsf_ctx);
-#else
-    if (h264bsfc)
-        av_bitstream_filter_close(h264bsfc); 
-#endif
-    return -1;
 }
