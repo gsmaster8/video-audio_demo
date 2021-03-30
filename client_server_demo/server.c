@@ -12,7 +12,7 @@
 #include <time.h>
 
 #define MY_PORT  5388
-#define BUF_SIZE 1024
+#define BUF_SIZE 65507
 
 char recvbuf[BUF_SIZE];
 
@@ -63,7 +63,7 @@ int RecvAVData(int fd, enum RECV_TYPE type) {
 
     __bzero(recvbuf, BUF_SIZE);
     while (1) {
-        data_s = recvfrom(fd, recvbuf, BUF_SIZE, 0, &client_addr, &client_len);
+        data_s = recvfrom(fd, recvbuf, BUF_SIZE, 0, (struct sockaddr *)&client_addr, &client_len);
 
         if (data_s == END_FILE_SIZE && strcmp(recvbuf, FILE_END) == 0) {
             if (type == AUDIO)
@@ -115,7 +115,7 @@ int main() {
     }
 
     __bzero(recvbuf, BUF_SIZE);
-    while (size = recvfrom(sockfd, recvbuf, BUF_SIZE-1, 0, (struct sockaddr *)&client_addr, &client_len)) {
+    while ((size = recvfrom(sockfd, recvbuf, BUF_SIZE-1, 0, (struct sockaddr *)&client_addr, &client_len)) != 0) {
 
         if (size == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))  // 非阻塞，未读到数据
             continue;

@@ -10,11 +10,11 @@
 
 #define SERVER_ADDR "127.0.0.1"
 #define SERVER_IPOR 5388
-#define BUF_SIZE  1024
+#define BUF_SIZE  65507
 
 char filebuf[BUF_SIZE]; // 发送缓冲区
 
-const int MAX_SIZE_ONE_TIME_SEND = 40000;  // 由于如果udp传输过快，服务端会接受不及时，故规定发送一定数量的字节就 sleep 1秒 
+const int MAX_SIZE_ONE_TIME_SEND = 130000;  // 由于如果udp传输过快，服务端会接受不及时，故规定发送一定数量的字节就 sleep 1秒 
 
 const char *filename_audio = "input.aac";
 const char *filename_video = "input.h264";
@@ -36,12 +36,12 @@ int SendAVData(int fd, struct sockaddr_in server_addr, FILE *file, enum SEND_TYP
     clock_t start, finish;
 
     if (type == AUDIO) {
-        if ((ret = sendto(fd, AUDIO_HEAD, HEAD_FILE_SIZE, 0, &server_addr, sizeof(server_addr))) < 0)  // 发送音频文件头
+        if ((ret = sendto(fd, AUDIO_HEAD, HEAD_FILE_SIZE, 0, (struct sockaddr *)&server_addr, sizeof(server_addr))) < 0)  // 发送音频文件头
             return ret;
         printf("\n=================Start transmit audio file!===================\n\n");
     }
     else if (type == VIDEO){
-        if ((ret = sendto(fd, VIDEO_HEAD, HEAD_FILE_SIZE, 0, &server_addr, sizeof(server_addr))) < 0)  // 发送视频文件头
+        if ((ret = sendto(fd, VIDEO_HEAD, HEAD_FILE_SIZE, 0, (struct sockaddr *)&server_addr, sizeof(server_addr))) < 0)  // 发送视频文件头
             return ret;
         printf("\n=================Start transmit video file!===================\n\n");
     }
@@ -54,7 +54,7 @@ int SendAVData(int fd, struct sockaddr_in server_addr, FILE *file, enum SEND_TYP
         size += tmp;
         //printf("Read %d bytes data from audio file\n", tmp);
 
-        if ((ret = sendto(fd, filebuf, tmp, 0, &server_addr, sizeof(server_addr))) < 0)
+        if ((ret = sendto(fd, filebuf, tmp, 0, (struct sockaddr *)&server_addr, sizeof(server_addr))) < 0)
             return ret;
         //printf("Success send %d bytes audio data\n", ret);
 
@@ -68,7 +68,8 @@ int SendAVData(int fd, struct sockaddr_in server_addr, FILE *file, enum SEND_TYP
     }
     printf("Success send %d bytes file!\n", size);
 
-    if ((ret = sendto(fd, FILE_END, END_FILE_SIZE, 0, &server_addr, sizeof(server_addr))) < 0)  // 发送文件尾
+    sleep(1); // 防止服务端socket还有缓存没读完
+    if ((ret = sendto(fd, FILE_END, END_FILE_SIZE, 0, (struct sockaddr *)&server_addr, sizeof(server_addr))) < 0)  // 发送文件尾
         return ret;
 
     finish = clock();
