@@ -1,10 +1,21 @@
 # video-audio_demo
-一个音视频后台开发练习demo，包括两个模块：
+一个音视频后台开发练习demo，实现以下功能：
 
-复用/解复用demo(muxer_demuxer_demo)  
-客户端/服务端demo(client_server_demo)
+> 客户端：从flv文件分离出音视频的数据，通过socket（udp）发送服务端，本地传输，不考虑丢包的情况；
+> 服务器：把收到的音视频数据包封装成MP4文件存在本地磁盘。
 
-最终项目源码放在src文件夹中。
+我们将功能拆分，分为“复用/解复用”模块和“客户端/服务端”模块，我们分别对这两个模块进行了实现，demo存放在对应的文件夹中：
+
+>复用/解复用demo(muxer_demuxer_demo)  
+>客户端/服务端demo(client_server_demo)
+
+最终，我们将两个模块的代码进行整合，并把项目的源码放在src文件夹中。
+
+**配置文件：** 可以对输入的flv路径和服务器绑定端口进行配置，格式为“flv路径 + ‘ ’ + 端口”。
+
+**运行方式：** chmod +x ./run.sh && ./run.sh
+
+**运行结果：** 生成了output.mp4，存放在avfile文件夹中。
 
 ## muxer_demuxer_demo
 
